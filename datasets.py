@@ -44,4 +44,4 @@ class benchmark_dataset(Dataset):
         noisy_fn = self.clean_fns[idx][0]
         noisy_img = read_img(noisy_fn)
         noisy_img = self.transforms(noisy_img)
-        return noisy_img
+        return noisy_img, noisy_fn
