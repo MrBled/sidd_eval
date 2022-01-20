@@ -4,7 +4,6 @@ import torch
 from torch.utils.data import dataset
 import torchvision.transforms as transforms
 from torchvision.utils import save_image
-from torchsummaryX import summary
 from torchsummary import summary
 import time
 import torchvision.datasets as datasets
@@ -21,10 +20,10 @@ import scipy.io
 from PIL import Image
 from collections import OrderedDict
 from datasets import benchmark_dataset as test_loader
-# from dncnn_noisemap_double import DnCNN
-# from fdn_downsample import DnCNN
-# from dncnn_unetStyle import DnCNN
-from dncnn_double_resnet import DnCNN
+from dncnn_resnet_single import DnCNN
+# from dncnn_double_resnet import DnCNN
+# from dncnn_noisemap_double_resnet_standardization import DnCNN
+# from dncnn
 # from dncnn_noisemap import DnCNN
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
@@ -58,24 +57,17 @@ def denoise_patches(eval_loader, model, patches):
         print(fname)
         noise_img = noise_img.cuda()
         for p, patch in enumerate(patches):
-            # noise_patch = noise_img[
-            #     :,
-            #     :,
-            #     patch[0] : patch[0] + patch[2], #start to stop - 1
-            #     patch[1] : patch[1] + patch[3]
-            # ]
             noise_patch = noise_img[
                 :,
                 :,
-                patch[0] - 10 : patch[0] + patch[2] + 10, #widen by 1 to deal with borders
-                patch[1] - 10: patch[1] + patch[3] + 10
+                patch[0] - 1 : patch[0] + patch[2] + 1, #widen by 1 to deal with borders
+                patch[1] - 1: patch[1] + patch[3] + 1
             ]
             tick = time.time()
-            _, _, noise_patch = model(noise_patch)
+            _, noise_patch = model(noise_patch)
             # _, noise_patch = model(noise_patch)
             tock = time.time()
-            noise_patch = noise_patch[:, :, 10 : 266, 10 : 266 ]
-            # noise_patch, _, _  = model(noise_patch)
+            noise_patch = noise_patch[:, :, 1 : 257, 1 : 257 ]
             noise_patch = noise_patch.squeeze()
             # save_image(noise_patch, f'img{i}_{p}.png')
             noise_patch = noise_patch * 255
@@ -101,8 +93,8 @@ def denoise_patches(eval_loader, model, patches):
 if __name__ == '__main__':
     # matlab_run = mat73.loadmat('Submit/SubmitSrgb.mat')
 
-    model_epoch = "model_epoch_5158.pt"
-    model_path = "/home/bledc/my_remote_folder/denoiser/models/Dec23_doubleDncnn_resDncnn_02_45_02/"
+    model_epoch = "model_epoch_5059.pt"
+    model_path = "/home/bledc/my_remote_folder/denoiser/models/Jan17_single_resdncnn_L1Loss_16_00_02/"
     # model_path = "/home/bledc/my_remote_folder/denoiser/models/Dec12_dncnn_noisemap_basic_02_50_04/"
     model_path = model_path + model_epoch
     model = DnCNN(in_nc=6, out_nc=3, nc=96, nb=20, act_mode='BR')
@@ -114,7 +106,7 @@ if __name__ == '__main__':
     for k, v in state_dict.items():
         name = k[7:]  # remove module.
         new_state_dict[name] = v
-    model.load_state_dict(checkpoint['model_state_dict'])
+    model.load_state_dict(checkpoint['model_state_dict'], strict=False)
     summary(model, torch.zeros((1, 3, 256, 256)))
 
 
@@ -141,4 +133,4 @@ if __name__ == '__main__':
         "TimeMPSrgb": ""
     }
 
-    scipy.io.savemat("SubmitSrgb.mat", sidd_dict, do_compression=True)
+    scipy.io.savemat("SubmitSrgb.mat", sidd_dict)

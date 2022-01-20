@@ -1,12 +1,10 @@
-from numpy.core.numeric import outer
 from numpy.lib.function_base import average
 import torch
 from torch.utils.data import dataset
 import torchvision.transforms as transforms
 from torchvision.utils import save_image
 from torchsummaryX import summary
-from torchsummary import summary
-import time
+from PIL import Image
 import torchvision.datasets as datasets
 import mat73
 # from datetime import datetime
@@ -21,14 +19,10 @@ import scipy.io
 from PIL import Image
 from collections import OrderedDict
 from datasets import benchmark_dataset as test_loader
-# from dncnn_noisemap_double import DnCNN
-# from fdn_downsample import DnCNN
-# from dncnn_unetStyle import DnCNN
-from dncnn_double_resnet import DnCNN
-# from dncnn_noisemap import DnCNN
-
+# from dncnn_stacked import DnCNN
+from noisemap_end import DnCNN
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]="2,3"
 
 device = torch.device("cuda" if torch.cuda.is_available() else 'cpu')
 
@@ -51,49 +45,36 @@ def np_to_pil(np_imgs):
 def denoise_patches(eval_loader, model, patches):
     imgs = [None] * 40
     patches_denoised = [None] * 32
-    outer_time = 0
+
     for i, (noise_img, fname) in enumerate(eval_loader):
-        total_time = 0
         print(f"Image: [{i}]")
         print(fname)
         noise_img = noise_img.cuda()
         for p, patch in enumerate(patches):
-            # noise_patch = noise_img[
-            #     :,
-            #     :,
-            #     patch[0] : patch[0] + patch[2], #start to stop - 1
-            #     patch[1] : patch[1] + patch[3]
-            # ]
             noise_patch = noise_img[
                 :,
                 :,
-                patch[0] - 10 : patch[0] + patch[2] + 10, #widen by 1 to deal with borders
-                patch[1] - 10: patch[1] + patch[3] + 10
+                patch[0] : patch[0] + patch[2], #start to stop - 1
+                patch[1] : patch[1] + patch[3]
             ]
-            tick = time.time()
-            _, _, noise_patch = model(noise_patch)
-            # _, noise_patch = model(noise_patch)
-            tock = time.time()
-            noise_patch = noise_patch[:, :, 10 : 266, 10 : 266 ]
+            _, noise_patch = model(noise_patch)
             # noise_patch, _, _  = model(noise_patch)
             noise_patch = noise_patch.squeeze()
-            # save_image(noise_patch, f'img{i}_{p}.png')
+            # save_image(noise_patch, f'/home/bledc/dataset/checkout_ims/im_{i}_{p}.png')
             noise_patch = noise_patch * 255
-            noise_patch = torch.round(noise_patch)
             noise_patch = torch.clamp(noise_patch, 0, 255)
             noise_patch = torch.permute(noise_patch, (1, 2, 0))
+            t_max = torch.max(noise_patch)
+            t_min = torch.min(noise_patch)
             noise_patch = noise_patch.cpu().detach().numpy().astype('uint8')
-            # test = noise_patch.cpu().detach().numpy()
-            # noise_patch = noise_patch.cpu().detach().numpy()
-            # noise_patch = np.round(noise_patch, 2)
+            np_max = np.max(noise_patch)
+            np_min = np.min(noise_patch)
+            # print(f"torch min/max: {t_min:.2f}/{t_max:.2f} \t np min/max: {np_min}/{np_max}")
+            noise_patch_im = Image.fromarray(noise_patch)
+            noise_patch_im.save(f'/home/bledc/dataset/checkout_ims/im_{i}_{p}.png')
             patches_denoised[p] = noise_patch
             inner_list = copy.copy(patches_denoised)
-            time_taken = tock - tick
-            total_time += time_taken
-        outer_time += total_time / len(patches)
         imgs[i] = inner_list
-    final_time = outer_time / len(eval_loader)
-    print(final_time)
         # imgs[i] = patches_denoised
     return imgs
 
@@ -101,11 +82,10 @@ def denoise_patches(eval_loader, model, patches):
 if __name__ == '__main__':
     # matlab_run = mat73.loadmat('Submit/SubmitSrgb.mat')
 
-    model_epoch = "model_epoch_5158.pt"
-    model_path = "/home/bledc/my_remote_folder/denoiser/models/Dec23_doubleDncnn_resDncnn_02_45_02/"
-    # model_path = "/home/bledc/my_remote_folder/denoiser/models/Dec12_dncnn_noisemap_basic_02_50_04/"
+    model_epoch = "model_epoch_3060.pt"
+    model_path = "/home/bledc/my_remote_folder/denoiser/models/Dec5_dncnn_noisemap_endMoreData_13_27_14/"
     model_path = model_path + model_epoch
-    model = DnCNN(in_nc=6, out_nc=3, nc=96, nb=20, act_mode='BR')
+    model = DnCNN(in_nc=3, out_nc=6, nc=64, nb=23, act_mode='BR')
     model = torch.nn.DataParallel(model).cuda()
     model.eval()
     checkpoint = torch.load(model_path, map_location=device)
@@ -115,7 +95,6 @@ if __name__ == '__main__':
         name = k[7:]  # remove module.
         new_state_dict[name] = v
     model.load_state_dict(checkpoint['model_state_dict'])
-    summary(model, torch.zeros((1, 3, 256, 256)))
 
 
     crop_locations = scipy.io.loadmat('SIDD_Benchmark_Code_v1.2/BenchmarkBlocks32.mat')
@@ -141,4 +120,4 @@ if __name__ == '__main__':
         "TimeMPSrgb": ""
     }
 
-    scipy.io.savemat("SubmitSrgb.mat", sidd_dict, do_compression=True)
+    scipy.io.savemat("SubmitSrgb.mat", sidd_dict)
